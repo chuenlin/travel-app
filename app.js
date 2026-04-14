@@ -1423,6 +1423,7 @@ function renderTripBooking() {
     <button class="collapsible-hdr" onclick="toggleCollapsible('booking-flights-card')">
       <span>✈ 機票資訊</span>
       <span class="collapsible-hdr-title"></span>
+      ${flights.length > 0 ? `<span class="collapsible-hdr-badge-green">${flights.length} 機票</span>` : ''}
       <span class="collapsible-hdr-arrow">▾</span>
     </button>
     <div class="collapsible-body">
@@ -1440,7 +1441,7 @@ function renderTripBooking() {
       <button class="collapsible-hdr" onclick="toggleCollapsible('booking-transport-card')">
         <span>🚌 交通景點</span>
         <span class="collapsible-hdr-title"></span>
-        ${pendingCount > 0 ? `<span class="collapsible-hdr-badge">${pendingCount} 待訂</span>` : ''}
+        ${pendingCount > 0 ? `<span class="collapsible-hdr-badge-red">${pendingCount} 待訂</span>` : ''}
         <span class="collapsible-hdr-arrow">▾</span>
       </button>
       <div class="collapsible-body">
@@ -1458,7 +1459,7 @@ function renderTripBooking() {
       <button class="collapsible-hdr" onclick="toggleCollapsible('booking-other-card')">
         <span>🎫 其他預訂</span>
         <span class="collapsible-hdr-title"></span>
-        ${pendingCount > 0 ? `<span class="collapsible-hdr-badge">${pendingCount} 待訂</span>` : ''}
+        ${pendingCount > 0 ? `<span class="collapsible-hdr-badge-red">${pendingCount} 待訂</span>` : ''}
         <span class="collapsible-hdr-arrow">▾</span>
       </button>
       <div class="collapsible-body">
