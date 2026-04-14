@@ -3,6 +3,8 @@
 const CACHE_NAME = 'travel-app-v1';
 const STATIC_ASSETS = [
   './index.html',
+  './style.css',
+  './app.js',
   './manifest.json',
 ];
 
