@@ -401,6 +401,17 @@ async function handleJSONImport(file) {
   let raw;
   try { raw = await file.text(); }
   catch (e) { showToast('讀取檔案失敗', 'error'); return; }
+
+  // Detect backup format { trips: [...], packing: [], links: [] }
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch (e) {
+    showToast('JSON 格式錯誤，請確認語法正確', 'error'); return;
+  }
+  if (Array.isArray(parsed.trips)) {
+    importBackupFile(parsed); return;
+  }
+
+  // Single trip format
   const result = validateTripJSON(raw);
   if (!result.ok) {
     showToast(`匯入失敗：${result.errors[0]}`, 'error');
@@ -410,6 +421,28 @@ async function handleJSONImport(file) {
   const trip = { id: genId('trip'), ...result.data };
   DataManager.addTrip(trip);
   showToast(`✅ 已匯入「${trip.trip_name}」`);
+  renderHome();
+}
+
+function importBackupFile(backup) {
+  const trips = Array.isArray(backup.trips) ? backup.trips : [];
+  if (trips.length === 0) { showToast('備份檔案中沒有行程', 'error'); return; }
+
+  const existingIds = new Set(DataManager.getTrips().map(t => t.id));
+  let imported = 0;
+  let skipped  = 0;
+
+  trips.forEach(t => {
+    if (!t.trip_name) { skipped++; return; }
+    // Avoid id collision with existing trips
+    const trip = existingIds.has(t.id) ? { ...t, id: genId('trip') } : t;
+    DataManager.addTrip(trip);
+    existingIds.add(trip.id);
+    imported++;
+  });
+
+  if (imported === 0) { showToast('沒有可匯入的行程', 'error'); return; }
+  showToast(`✅ 已匯入 ${imported} 個行程${skipped > 0 ? `（略過 ${skipped} 筆無效資料）` : ''}`);
   renderHome();
 }
 
