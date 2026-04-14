@@ -2203,10 +2203,17 @@ function deletePackingItem(id) {
 // 14. 重新整理
 // ═══════════════════════════════════════════════════════════
 async function reloadApp() {
-  if ('serviceWorker' in navigator) {
-    const reg = await navigator.serviceWorker.getRegistration();
-    if (reg) await reg.update();
-  }
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) await reg.update();
+    }
+    // Clear all SW caches so next load fetches fresh CSS/JS from network
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  } catch (_) { /* ignore, still reload */ }
   window.location.reload();
 }
 

@@ -1,5 +1,6 @@
 // Service Worker — Travel App
-const CACHE_NAME = 'travel-app-v1';
+// ⚠️ 每次部署前 +1，確保舊快取被清除
+const CACHE_NAME = 'travel-app-v2';
 const STATIC_ASSETS = [
   './index.html',
   './style.css',
