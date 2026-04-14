@@ -75,6 +75,7 @@
     <div class="more-section">
       <button class="btn-backup" onclick="downloadBackup()">📦 備份下載所有行程</button>
       <button class="btn-import-helper" onclick="showImportHelper()">📋 匯入說明 / 範例下載</button>
+      <button class="btn-reload" onclick="reloadApp()">🔄 重新整理 / 取得最新版本</button>
     </div>
   </div>
 
@@ -103,9 +104,13 @@
       <div class="days-scroll-wrap">
         <div id="days-scroll" class="days-scroll"></div>
       </div>
+      <div id="day-title-bar" class="day-title-bar">
+        <div id="day-label-text" class="day-label-text" onclick="editDayLabel()"></div>
+      </div>
       <div id="events-list" class="events-list"></div>
       <div id="drive-warning"></div>
       <div id="hotel-bar"></div>
+      <div id="delete-day-bar"></div>
     </div>
 
     <!-- Panel 2：預訂 -->

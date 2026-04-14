@@ -12,6 +12,7 @@ const TYPE_COLORS    = { attraction:'#4a7c59', food:'#e8a020', hotel:'#8e44ad', 
 const TYPE_LABELS    = { attraction:'景點', food:'餐廳', hotel:'住宿', transport:'交通' };
 const CURRENCY_SYMBOLS = { TWD:'NT$', JPY:'¥', USD:'$', CAD:'CA$', EUR:'€' };
 const WEEKDAYS       = ['日', '一', '二', '三', '四', '五', '六'];
+const WEEKDAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const TRIP_PANELS    = ['itinerary', 'booking', 'expense', 'notes', 'members'];
 
 // 景點 Modal 暫存連結列表
@@ -116,6 +117,20 @@ function formatDate(str) {
 function formatFullDate(str) {
   if (!str) return '';
   return str.replace(/-/g, '/');
+}
+
+function formatShortDate(str) {
+  if (!str) return '';
+  const parts = str.split('-');
+  if (parts.length !== 3) return str;
+  return `${parts[0]}/${parseInt(parts[1])}/${parseInt(parts[2])}`;
+}
+
+function formatDayDate(str) {
+  if (!str || !DATE_REGEX.test(str)) return '';
+  const parts = str.split('-');
+  const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+  return `${parseInt(parts[1])}/${parseInt(parts[2])} ${WEEKDAYS_SHORT[d.getDay()]}`;
 }
 
 function typeColor(type) { return TYPE_COLORS[type] || TYPE_COLORS.attraction; }
@@ -240,8 +255,8 @@ function renderHome() {
 function buildTripCardHTML(trip) {
   const color   = VALID_COLORS.includes(trip.cover_color) ? trip.cover_color : 'green';
   const days    = calcTripDays(trip);
-  const start   = trip.start_date ? formatDate(trip.start_date) : '';
-  const end     = trip.end_date   ? formatDate(trip.end_date)   : '';
+  const start   = trip.start_date ? formatShortDate(trip.start_date) : '';
+  const end     = trip.end_date   ? formatShortDate(trip.end_date)   : '';
   const members = Array.isArray(trip.members) ? trip.members : [];
   const avatarsHTML = members.slice(0, 4).map(m =>
     `<div class="member-avatar">${encodeHTML(m.charAt(0).toUpperCase())}</div>`
@@ -550,6 +565,7 @@ function renderDetail() {
   renderEventsList(events);
   renderDriveWarning(events);
   renderHotelBar(day);
+  renderDayTitle(day);
 }
 
 function editTripTitle() {
@@ -586,6 +602,47 @@ function saveTripTitle(newName) {
   }
 }
 
+function renderDayTitle(day) {
+  const el = document.getElementById('day-label-text');
+  if (!el) return;
+  el.textContent = day && day.label ? day.label : '';
+}
+
+function editDayLabel() {
+  const trip = DataManager.getTrip(appState.currentTrip);
+  if (!trip) return;
+  const day = trip.days[appState.currentDay];
+  if (!day) return;
+  const el = document.getElementById('day-label-text');
+  if (!el) return;
+  el.outerHTML = `<input id="day-label-input" class="day-label-input"
+    type="text" value="${encodeHTML(day.label || '')}" maxlength="20"
+    placeholder="日期標題（例：東京）"
+    onblur="saveDayLabel(this.value)"
+    onkeydown="if(event.key==='Enter')this.blur()" />`;
+  const input = document.getElementById('day-label-input');
+  if (input) { input.focus(); input.select(); }
+}
+
+function saveDayLabel(value) {
+  const trip = DataManager.getTrip(appState.currentTrip);
+  if (!trip) return;
+  const day = trip.days[appState.currentDay];
+  if (!day) return;
+  day.label = value.trim();
+  DataManager.updateTrip(trip.id, trip);
+  const input = document.getElementById('day-label-input');
+  if (input) {
+    const div = document.createElement('div');
+    div.id = 'day-label-text';
+    div.className = 'day-label-text';
+    div.setAttribute('onclick', 'editDayLabel()');
+    div.textContent = day.label;
+    input.replaceWith(div);
+  }
+  renderDayButtons(trip);
+}
+
 function renderModebar() {
   const bar  = document.getElementById('mode-bar');
   const icon = document.getElementById('mode-icon');
@@ -619,15 +676,16 @@ function renderDayButtons(trip) {
   (trip.days || []).forEach((day, i) => {
     const btn = document.createElement('button');
     btn.className = `day-btn${i === appState.currentDay ? ' active' : ''}`;
-    btn.textContent = `Day ${i + 1}${day.label ? ' · ' + day.label : ''}`;
+    btn.dataset.dayIdx = i;
+    const dateLabel = formatDayDate(day.date);
+    btn.innerHTML = `<span class="day-btn-num">Day ${i + 1}</span>${dateLabel ? `<span class="day-btn-date">${encodeHTML(dateLabel)}</span>` : ''}`;
     btn.addEventListener('click', () => switchDay(i));
     scroll.appendChild(btn);
   });
   if (appState.editMode) {
     const addBtn = document.createElement('button');
-    addBtn.className = 'day-btn';
-    addBtn.style.cssText = 'background:none;border-style:dashed;color:var(--muted)';
-    addBtn.textContent = '＋ Day';
+    addBtn.className = 'day-btn-add';
+    addBtn.innerHTML = '<span class="day-btn-num">＋ Day</span>';
     addBtn.addEventListener('click', addNewDay);
     scroll.appendChild(addBtn);
   }
@@ -653,20 +711,26 @@ function addNewDay() {
   renderDayButtons(trip);
   switchDay(appState.currentDay);
   showToast(`✅ 已新增 Day ${trip.days.length}`);
+  // 捲動至新 Day 按鈕
+  setTimeout(() => {
+    const activeBtn = document.querySelector('#days-scroll .day-btn.active');
+    if (activeBtn) activeBtn.scrollIntoView({ inline: 'nearest', behavior: 'smooth' });
+  }, 50);
 }
 
 function switchDay(index) {
   appState.currentDay = index;
   const trip = DataManager.getTrip(appState.currentTrip);
   if (!trip) return;
-  document.querySelectorAll('.day-btn').forEach((b, i) =>
-    b.classList.toggle('active', i === index));
+  document.querySelectorAll('#days-scroll .day-btn').forEach(b =>
+    b.classList.toggle('active', parseInt(b.dataset.dayIdx) === index));
   const day    = trip.days[index];
   const events = day ? (day.events || []) : [];
   renderWeather(day);
   renderEventsList(events);
   renderDriveWarning(events);
   renderHotelBar(day);
+  renderDayTitle(day);
 }
 
 function renderMembers(trip) {
@@ -848,24 +912,74 @@ function renderHotelBar(day) {
   }
   if (!bodyContent) bodyContent = '<span style="font-size:13px;color:var(--muted)">無備註</span>';
 
-  const editBtns = appState.editMode
-    ? `<button class="edit-icon-btn" style="margin-left:auto;margin-right:4px" onclick="event.stopPropagation();openEditHotelModal()" title="編輯">✏️</button>
-       <button class="edit-icon-btn del" onclick="event.stopPropagation();deleteHotelData()" title="移除住宿">🗑</button>`
-    : '';
-
-  el.innerHTML = `
-    <div class="hotel-bar-header" id="hotel-bar-header" onclick="toggleHotelBar()">
-      <span style="font-size:18px">🏠</span>
-      <div style="flex:1;min-width:0">
-        <div style="font-weight:600;font-size:14px">${encodeHTML(hotel.name)}</div>
-        <div style="font-size:12px;color:var(--muted)">今晚住宿</div>
+  if (appState.editMode) {
+    el.innerHTML = `
+      <div class="hotel-bar-header">
+        <span style="font-size:18px">🏠</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:14px">${encodeHTML(hotel.name)}</div>
+          <div style="font-size:12px;color:var(--muted)">今晚住宿</div>
+        </div>
+        <div class="edit-actions">
+          <button class="edit-icon-btn" onclick="openEditHotelModal()" title="編輯">✏️</button>
+          <button class="edit-icon-btn del" onclick="deleteHotelData()" title="移除住宿">🗑</button>
+        </div>
+      </div>`;
+  } else {
+    el.innerHTML = `
+      <div class="hotel-bar-header" id="hotel-bar-header" onclick="toggleHotelBar()">
+        <span style="font-size:18px">🏠</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:14px">${encodeHTML(hotel.name)}</div>
+          <div style="font-size:12px;color:var(--muted)">今晚住宿</div>
+        </div>
+        <span class="hotel-arrow" id="hotel-arrow">▾</span>
       </div>
-      ${editBtns}
-      <span class="hotel-arrow" id="hotel-arrow">▾</span>
-    </div>
-    <div class="hotel-bar-body" id="hotel-bar-body">
-      <div class="hotel-bar-body-inner">${bodyContent}</div>
-    </div>`;
+      <div class="hotel-bar-body" id="hotel-bar-body">
+        <div class="hotel-bar-body-inner">${bodyContent}</div>
+      </div>`;
+  }
+  renderDeleteDayBar();
+}
+
+function renderDeleteDayBar() {
+  const el = document.getElementById('delete-day-bar');
+  if (!el) return;
+  if (!appState.editMode) { el.innerHTML = ''; return; }
+  const trip = DataManager.getTrip(appState.currentTrip);
+  if (!trip || (trip.days || []).length <= 1) { el.innerHTML = ''; return; }
+  el.innerHTML = `<button class="btn-delete-day" onclick="confirmDeleteDay()">🗑 刪除本日行程</button>`;
+}
+
+function confirmDeleteDay() {
+  const trip = DataManager.getTrip(appState.currentTrip);
+  if (!trip) return;
+  const day = trip.days[appState.currentDay];
+  const label = day.label ? `「${encodeHTML(day.label)}」` : `Day ${appState.currentDay + 1}`;
+  openModal(`
+    <div class="modal-title">刪除行程日 <button class="modal-close" onclick="closeModal()">✕</button></div>
+    <p style="font-size:14px;color:var(--muted);margin-bottom:16px">確定刪除 ${label} 及其所有景點嗎？此操作無法復原。</p>
+    <button class="btn-submit" style="background:var(--danger)" onclick="executeDeleteDay()">確定刪除</button>
+    <button class="btn-submit" style="background:var(--muted);margin-top:8px" onclick="closeModal()">取消</button>
+  `);
+}
+
+function executeDeleteDay() {
+  const trip = DataManager.getTrip(appState.currentTrip);
+  if (!trip) return;
+  const dayIndex = appState.currentDay;
+  const day = trip.days[dayIndex];
+  const label = day.label ? `「${day.label}」` : `Day ${dayIndex + 1}`;
+  trip.days.splice(dayIndex, 1);
+  if (trip.days.length > 0) {
+    const lastDate = trip.days[trip.days.length - 1].date;
+    if (lastDate) trip.end_date = lastDate;
+  }
+  DataManager.updateTrip(trip.id, trip);
+  appState.currentDay = Math.max(0, dayIndex - 1);
+  closeModal();
+  showToast(`已刪除 ${label}`);
+  renderDetail();
 }
 
 function openEditHotelModal() {
@@ -1132,11 +1246,13 @@ function _openEventModal(ev, dayIdx, eventIdx) {
       <label>連結</label>
       <div id="modal-links-list"></div>
       <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
-        <input id="modal-link-label" type="text" placeholder="顯示名稱（可留空）" maxlength="80"
-          style="width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius-btn);font-size:14px;background:var(--cream);color:var(--text);outline:none;font-family:inherit" />
         <div style="display:flex;gap:8px">
-          <input id="modal-link-url" type="url" placeholder="https://..."
-            style="flex:1;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius-btn);font-size:14px;background:var(--cream);color:var(--text);outline:none;font-family:inherit" />
+          <div style="display:flex;flex-direction:column;gap:6px;width:100%;">
+            <input id="modal-link-label" type="text" placeholder="顯示名稱（可留空）" maxlength="80"
+              style="padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius-btn);font-size:14px;background:var(--cream);color:var(--text);outline:none;font-family:inherit" />
+            <input id="modal-link-url" type="url" placeholder="https://..."
+              style="padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius-btn);font-size:14px;background:var(--cream);color:var(--text);outline:none;font-family:inherit" />
+          </div>
           <button type="button" class="btn-ghost-sm" onclick="addModalLink()" style="white-space:nowrap">＋ 新增</button>
         </div>
       </div>
@@ -1236,6 +1352,10 @@ function renderTripBooking() {
   const el   = document.getElementById('trip-booking-content');
   if (!trip) return;
 
+  // Preserve open/closed state across re-renders
+  const savedOpen = new Set([...el.querySelectorAll('.collapsible-card.open')].map(c => c.id));
+  const hadCards  = el.querySelector('.collapsible-card') !== null;
+
   const flights        = Array.isArray(trip.flights) ? trip.flights : [];
   const transportItems = [];
   const otherItems     = [];
@@ -1250,17 +1370,25 @@ function renderTripBooking() {
     });
   });
 
+  // pending first, then booked; within each group sort by date + time
+  function sortBookingItems(items) {
+    return [...items].sort((a, b) => {
+      if (a.ev.status !== b.ev.status) return a.ev.status === 'pending' ? -1 : 1;
+      const ka = (a.day.date || '') + (a.ev.time || '');
+      const kb = (b.day.date || '') + (b.ev.time || '');
+      return ka.localeCompare(kb);
+    });
+  }
+
   let html = '';
 
-  const pendingFlights = flights.filter(f => f.status === 'pending').length;
   const flightsBody = flights.length === 0
     ? '<div class="no-items">尚未新增機票</div>'
     : `<div class="booking-list">${flights.map((f, i) => buildFlightItemHTML(f, i)).join('')}</div>`;
-  html += `<div class="collapsible-card open" id="booking-flights-card">
+  html += `<div class="collapsible-card" id="booking-flights-card">
     <button class="collapsible-hdr" onclick="toggleCollapsible('booking-flights-card')">
       <span>✈ 機票資訊</span>
       <span class="collapsible-hdr-title"></span>
-      ${pendingFlights > 0 ? `<span class="collapsible-hdr-badge">${pendingFlights} 待訂</span>` : ''}
       <span class="collapsible-hdr-arrow">▾</span>
     </button>
     <div class="collapsible-body">
@@ -1271,8 +1399,9 @@ function renderTripBooking() {
     </div>
   </div>`;
 
-  if (transportItems.length > 0) {
-    const pendingCount = transportItems.filter(x => x.ev.status === 'pending').length;
+  const sortedTransport = sortBookingItems(transportItems);
+  if (sortedTransport.length > 0) {
+    const pendingCount = sortedTransport.filter(x => x.ev.status === 'pending').length;
     html += `<div class="collapsible-card open" id="booking-transport-card">
       <button class="collapsible-hdr" onclick="toggleCollapsible('booking-transport-card')">
         <span>🚌 交通景點</span>
@@ -1282,14 +1411,15 @@ function renderTripBooking() {
       </button>
       <div class="collapsible-body">
         <div class="booking-list">
-          ${transportItems.map(({ day, ev, di, ei }) => buildBookingItemHTML(trip, day, ev, di, ei)).join('')}
+          ${sortedTransport.map(({ day, ev, di, ei }) => buildBookingItemHTML(trip, day, ev, di, ei)).join('')}
         </div>
       </div>
     </div>`;
   }
 
-  if (otherItems.length > 0) {
-    const pendingCount = otherItems.filter(x => x.ev.status === 'pending').length;
+  const sortedOther = sortBookingItems(otherItems);
+  if (sortedOther.length > 0) {
+    const pendingCount = sortedOther.filter(x => x.ev.status === 'pending').length;
     html += `<div class="collapsible-card open" id="booking-other-card">
       <button class="collapsible-hdr" onclick="toggleCollapsible('booking-other-card')">
         <span>🎫 其他預訂</span>
@@ -1299,32 +1429,52 @@ function renderTripBooking() {
       </button>
       <div class="collapsible-body">
         <div class="booking-list">
-          ${otherItems.map(({ day, ev, di, ei }) => buildBookingItemHTML(trip, day, ev, di, ei)).join('')}
+          ${sortedOther.map(({ day, ev, di, ei }) => buildBookingItemHTML(trip, day, ev, di, ei)).join('')}
         </div>
       </div>
     </div>`;
   }
 
   el.innerHTML = html;
+
+  // Restore open/closed states (skip on first render — use HTML defaults)
+  if (hadCards) {
+    el.querySelectorAll('.collapsible-card').forEach(card => {
+      if (savedOpen.has(card.id)) card.classList.add('open');
+      else card.classList.remove('open');
+    });
+  }
 }
 
 function buildFlightItemHTML(f, idx) {
-  const statusLabel = f.status === 'booked' ? '✓ 已訂' : '⚠ 待訂';
-  const dateStr     = f.date ? encodeHTML(formatDate(f.date)) : '';
-  const timeStr     = f.time ? ` ${encodeHTML(f.time)}` : '';
-  const flightNo    = f.flight_no ? ` · ${encodeHTML(f.flight_no)}` : '';
-  const noteHTML    = f.note ? `<div class="booking-note">${encodeHTML(f.note)}</div>` : '';
+  // route line: dep_city/arr_city if available, fall back to legacy route field
+  const depCity = f.dep_city ? encodeHTML(f.dep_city) + (f.dep_terminal ? ` T${encodeHTML(f.dep_terminal)}` : '') : '';
+  const arrCity = f.arr_city ? encodeHTML(f.arr_city) + (f.arr_terminal ? ` T${encodeHTML(f.arr_terminal)}` : '') : '';
+  const routeStr = (depCity || arrCity) ? `${depCity || '?'} → ${arrCity || '?'}` : encodeHTML(f.route || '未填航線');
+
+  // departure / arrival time lines
+  const depDate = f.dep_date ? formatDate(f.dep_date) : (f.date ? formatDate(f.date) : '');
+  const depTime = f.dep_time || f.time || '';
+  const arrDate = f.arr_date ? formatDate(f.arr_date) : '';
+  const arrTime = f.arr_time || '';
+  const depStr  = [depDate, depTime].filter(Boolean).join(' ');
+  const arrStr  = [arrDate, arrTime].filter(Boolean).join(' ');
+  const timeLineStr = (depStr && arrStr) ? `${depStr} → ${arrStr}` : (depStr || arrStr);
+
+  const details  = [f.flight_no ? `航班 ${f.flight_no}` : '', f.seat ? `座位 ${f.seat}` : '', f.baggage ? `行李 ${f.baggage}` : ''].filter(Boolean).join(' · ');
+  const noteHTML = f.note ? `<div class="booking-note">${encodeHTML(f.note)}</div>` : '';
+
   return `
     <div class="booking-item">
       <div class="booking-info">
-        <div class="booking-name">✈ ${encodeHTML(f.route || '未填航線')}</div>
-        <div class="booking-sub">${dateStr}${timeStr}${flightNo}</div>
+        <div class="booking-name">✈ ${routeStr}</div>
+        ${timeLineStr ? `<div class="booking-sub">${encodeHTML(timeLineStr)}</div>` : ''}
+        ${details     ? `<div class="booking-sub">${encodeHTML(details)}</div>` : ''}
         ${noteHTML}
       </div>
       <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-        <button class="booking-status-btn ${encodeHTML(f.status)}"
-          onclick="toggleFlightStatus(${idx})">${statusLabel}</button>
-        <button class="btn-icon-del" onclick="deleteFlightItem(${idx})">🗑</button>
+        <button class="edit-icon-btn" onclick="openEditFlightModal(${idx})">✏️</button>
+        <button class="edit-icon-btn del" onclick="deleteFlightItem(${idx})">🗑</button>
       </div>
     </div>`;
 }
@@ -1332,60 +1482,150 @@ function buildFlightItemHTML(f, idx) {
 function openAddFlightModal() {
   openModal(`
     <div class="modal-title">新增機票 <button class="modal-close" onclick="closeModal()">✕</button></div>
-    <div class="form-group"><label>航線 *</label>
-      <input id="f-flight-route" type="text" placeholder="例：TPE → NRT" maxlength="40" /></div>
-    <div class="form-group"><label>日期</label>
-      <input id="f-flight-date" type="date" /></div>
-    <div class="form-group"><label>時間</label>
-      <input id="f-flight-time" type="time" /></div>
-    <div class="form-group"><label>航班號</label>
-      <input id="f-flight-no" type="text" placeholder="例：BR197" maxlength="20" /></div>
-    <div class="form-group"><label>備註（訂位代號、座位等）</label>
+    <div class="form-row-2">
+      <div class="form-group"><label>出發地 *</label>
+        <input id="f-dep-city" type="text" placeholder="例：TPE" maxlength="10" /></div>
+      <div class="form-group"><label>航廈</label>
+        <input id="f-dep-terminal" type="text" placeholder="例：2" maxlength="5" /></div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-group"><label>出發日期</label>
+        <input id="f-dep-date" type="date" /></div>
+      <div class="form-group"><label>出發時間</label>
+        <input id="f-dep-time" type="time" /></div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-group"><label>抵達地 *</label>
+        <input id="f-arr-city" type="text" placeholder="例：NRT" maxlength="10" /></div>
+      <div class="form-group"><label>航廈</label>
+        <input id="f-arr-terminal" type="text" placeholder="例：1" maxlength="5" /></div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-group"><label>抵達日期</label>
+        <input id="f-arr-date" type="date" /></div>
+      <div class="form-group"><label>抵達時間</label>
+        <input id="f-arr-time" type="time" /></div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-group"><label>航班號</label>
+        <input id="f-flight-no" type="text" placeholder="例：BR197" maxlength="20" /></div>
+      <div class="form-group"><label>座位</label>
+        <input id="f-seat" type="text" placeholder="例：15A" maxlength="10" /></div>
+    </div>
+    <div class="form-group"><label>行李</label>
+      <input id="f-baggage" type="text" placeholder="例：20kg" maxlength="30" /></div>
+    <div class="form-group"><label>備註</label>
       <input id="f-flight-note" type="text" placeholder="例：PNR: ABCDEF" /></div>
     <button class="btn-submit" onclick="saveFlightItem()">新增機票</button>
   `);
+  setTimeout(() => document.getElementById('f-dep-city')?.focus(), 100);
 }
 
 function saveFlightItem() {
-  const route = document.getElementById('f-flight-route').value.trim();
-  if (!route) { showToast('請輸入航線', 'error'); return; }
+  const depCity = document.getElementById('f-dep-city').value.trim();
+  const arrCity = document.getElementById('f-arr-city').value.trim();
+  if (!depCity && !arrCity) { showToast('請輸入出發地或抵達地', 'error'); return; }
   const trip = DataManager.getTrip(appState.currentTrip);
   if (!trip) return;
   if (!Array.isArray(trip.flights)) trip.flights = [];
   trip.flights.push({
-    id:        genId('flt'),
-    route,
-    date:      document.getElementById('f-flight-date').value || '',
-    time:      document.getElementById('f-flight-time').value || '',
-    flight_no: document.getElementById('f-flight-no').value.trim(),
-    note:      document.getElementById('f-flight-note').value.trim(),
-    status:    'pending',
+    id:           genId('flt'),
+    dep_city:     depCity,
+    dep_terminal: document.getElementById('f-dep-terminal').value.trim(),
+    dep_date:     document.getElementById('f-dep-date').value || '',
+    dep_time:     document.getElementById('f-dep-time').value || '',
+    arr_city:     arrCity,
+    arr_terminal: document.getElementById('f-arr-terminal').value.trim(),
+    arr_date:     document.getElementById('f-arr-date').value || '',
+    arr_time:     document.getElementById('f-arr-time').value || '',
+    flight_no:    document.getElementById('f-flight-no').value.trim(),
+    seat:         document.getElementById('f-seat').value.trim(),
+    baggage:      document.getElementById('f-baggage').value.trim(),
+    note:         document.getElementById('f-flight-note').value.trim(),
+    status:       'pending',
   });
   DataManager.updateTrip(trip.id, trip);
   closeModal();
   showToast('✅ 已新增機票');
   renderTripBooking();
-  updateTripBookingBadge();
-}
-
-function toggleFlightStatus(idx) {
-  const trip = DataManager.getTrip(appState.currentTrip);
-  if (!trip || !Array.isArray(trip.flights) || !trip.flights[idx]) return;
-  trip.flights[idx].status = trip.flights[idx].status === 'booked' ? 'pending' : 'booked';
-  DataManager.updateTrip(trip.id, trip);
-  renderTripBooking();
-  updateTripBookingBadge();
 }
 
 function deleteFlightItem(idx) {
   const trip = DataManager.getTrip(appState.currentTrip);
   if (!trip || !Array.isArray(trip.flights)) return;
-  const route = trip.flights[idx]?.route || '機票';
+  const f    = trip.flights[idx];
+  const name = (f?.dep_city && f?.arr_city) ? `${f.dep_city} → ${f.arr_city}` : (f?.route || '機票');
   trip.flights.splice(idx, 1);
   DataManager.updateTrip(trip.id, trip);
-  showToast(`已刪除「${route}」`);
+  showToast(`已刪除「${name}」`);
   renderTripBooking();
-  updateTripBookingBadge();
+}
+
+function openEditFlightModal(idx) {
+  const trip = DataManager.getTrip(appState.currentTrip);
+  if (!trip || !trip.flights?.[idx]) return;
+  const f = trip.flights[idx];
+  openModal(`
+    <div class="modal-title">編輯機票 <button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-row-2">
+      <div class="form-group"><label>出發地</label>
+        <input id="f-dep-city" type="text" value="${encodeHTML(f.dep_city || '')}" maxlength="10" /></div>
+      <div class="form-group"><label>航廈</label>
+        <input id="f-dep-terminal" type="text" value="${encodeHTML(f.dep_terminal || '')}" maxlength="5" /></div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-group"><label>出發日期</label>
+        <input id="f-dep-date" type="date" value="${encodeHTML(f.dep_date || f.date || '')}" /></div>
+      <div class="form-group"><label>出發時間</label>
+        <input id="f-dep-time" type="time" value="${encodeHTML(f.dep_time || f.time || '')}" /></div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-group"><label>抵達地</label>
+        <input id="f-arr-city" type="text" value="${encodeHTML(f.arr_city || '')}" maxlength="10" /></div>
+      <div class="form-group"><label>航廈</label>
+        <input id="f-arr-terminal" type="text" value="${encodeHTML(f.arr_terminal || '')}" maxlength="5" /></div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-group"><label>抵達日期</label>
+        <input id="f-arr-date" type="date" value="${encodeHTML(f.arr_date || '')}" /></div>
+      <div class="form-group"><label>抵達時間</label>
+        <input id="f-arr-time" type="time" value="${encodeHTML(f.arr_time || '')}" /></div>
+    </div>
+    <div class="form-row-2">
+      <div class="form-group"><label>航班號</label>
+        <input id="f-flight-no" type="text" value="${encodeHTML(f.flight_no || '')}" maxlength="20" /></div>
+      <div class="form-group"><label>座位</label>
+        <input id="f-seat" type="text" value="${encodeHTML(f.seat || '')}" maxlength="10" /></div>
+    </div>
+    <div class="form-group"><label>行李</label>
+      <input id="f-baggage" type="text" value="${encodeHTML(f.baggage || '')}" maxlength="30" /></div>
+    <div class="form-group"><label>備註</label>
+      <input id="f-flight-note" type="text" value="${encodeHTML(f.note || '')}" /></div>
+    <button class="btn-submit" onclick="saveEditFlightItem(${idx})">儲存</button>
+    <button class="btn-submit" style="background:var(--muted);margin-top:8px" onclick="closeModal()">取消</button>
+  `);
+}
+
+function saveEditFlightItem(idx) {
+  const trip = DataManager.getTrip(appState.currentTrip);
+  if (!trip || !trip.flights?.[idx]) return;
+  const f = trip.flights[idx];
+  f.dep_city     = document.getElementById('f-dep-city').value.trim();
+  f.dep_terminal = document.getElementById('f-dep-terminal').value.trim();
+  f.dep_date     = document.getElementById('f-dep-date').value || '';
+  f.dep_time     = document.getElementById('f-dep-time').value || '';
+  f.arr_city     = document.getElementById('f-arr-city').value.trim();
+  f.arr_terminal = document.getElementById('f-arr-terminal').value.trim();
+  f.arr_date     = document.getElementById('f-arr-date').value || '';
+  f.arr_time     = document.getElementById('f-arr-time').value || '';
+  f.flight_no    = document.getElementById('f-flight-no').value.trim();
+  f.seat         = document.getElementById('f-seat').value.trim();
+  f.baggage      = document.getElementById('f-baggage').value.trim();
+  f.note         = document.getElementById('f-flight-note').value.trim();
+  DataManager.updateTrip(trip.id, trip);
+  closeModal();
+  showToast('✅ 已儲存機票');
+  renderTripBooking();
 }
 
 function buildBookingItemHTML(trip, day, ev, di, ei) {
@@ -1427,7 +1667,6 @@ function updateTripBookingBadge() {
   const trip = DataManager.getTrip(appState.currentTrip);
   if (!trip) { badge.style.display = 'none'; return; }
   let pending = 0;
-  (trip.flights || []).forEach(f => { if (f.status === 'pending') pending++; });
   (trip.days || []).forEach(day => {
     if (day.hotel && day.hotel.status === 'pending') pending++;
     (day.events || []).forEach(ev => { if (ev.status === 'pending') pending++; });
@@ -1519,11 +1758,14 @@ function renderTripNotes() {
     </div>
 
     <div class="collapsible-card open" id="notes-links-card">
-      <button class="collapsible-hdr" onclick="toggleCollapsible('notes-links-card')">
-        <span>🔗 重要連結</span>
-        <span class="collapsible-hdr-title"></span>
-        <span class="collapsible-hdr-arrow">▾</span>
-      </button>
+      <div class="collapsible-hdr-row">
+        <button class="collapsible-hdr" onclick="toggleCollapsible('notes-links-card')">
+          <span>🔗 重要連結</span>
+          <span class="collapsible-hdr-title"></span>
+          <span class="collapsible-hdr-arrow">▾</span>
+        </button>
+        <button class="collapsible-add-btn" onclick="openAddTripLinkModal()">＋</button>
+      </div>
       <div class="collapsible-body">
         <div id="trip-links-list">
           ${links.length === 0
@@ -1534,22 +1776,18 @@ function renderTripNotes() {
                 <button class="btn-icon-del" onclick="deleteTripLink('${encodeHTML(l.id)}')">🗑</button>
               </div>`).join('')}
         </div>
-        <div class="add-link-row">
-          <input id="trip-link-label" type="text" placeholder="顯示名稱（可留空自動抓取）" maxlength="80" />
-          <div class="url-row">
-            <input id="trip-link-url" type="url" placeholder="https://..." />
-            <button id="trip-link-add-btn" onclick="addTripLink()">新增</button>
-          </div>
-        </div>
       </div>
     </div>
 
     <div class="collapsible-card open" id="notes-shopping-card">
-      <button class="collapsible-hdr" onclick="toggleCollapsible('notes-shopping-card')">
-        <span>🛍 購買清單</span>
-        <span class="collapsible-hdr-title"></span>
-        <span class="collapsible-hdr-arrow">▾</span>
-      </button>
+      <div class="collapsible-hdr-row">
+        <button class="collapsible-hdr" onclick="toggleCollapsible('notes-shopping-card')">
+          <span>🛍 購買清單</span>
+          <span class="collapsible-hdr-title"></span>
+          <span class="collapsible-hdr-arrow">▾</span>
+        </button>
+        <button class="collapsible-add-btn" onclick="openAddTripShoppingModal()">＋</button>
+      </div>
       <div class="collapsible-body">
         <div id="trip-shopping-list">
           ${shopping.length === 0
@@ -1561,10 +1799,6 @@ function renderTripNotes() {
                 <label for="sh-${encodeHTML(s.id)}" class="${s.checked ? 'checked' : ''}">${encodeHTML(s.text)}</label>
                 <button class="btn-icon-del" onclick="deleteTripShopping('${encodeHTML(s.id)}')">🗑</button>
               </div>`).join('')}
-        </div>
-        <div class="add-input-row">
-          <input id="trip-shopping-input" type="text" placeholder="新增購買項目..." />
-          <button onclick="addTripShopping()">新增</button>
         </div>
       </div>
     </div>
@@ -1626,6 +1860,75 @@ function deleteTripLink(linkId) {
   DataManager.updateTrip(trip.id, trip);
   _refreshTripLinksList(trip);
   showToast('已刪除連結');
+}
+
+function openAddTripLinkModal() {
+  openModal(`
+    <div class="modal-title">新增重要連結</div>
+    <div class="form-group">
+      <label>顯示名稱（可留空自動抓取）</label>
+      <input id="modal-link-label" type="text" placeholder="例：訂房確認信" maxlength="80" />
+    </div>
+    <div class="form-group">
+      <label>連結網址</label>
+      <input id="modal-link-url" type="url" placeholder="https://..." />
+    </div>
+    <button class="btn-submit" id="modal-link-add-btn" onclick="addTripLinkFromModal()">新增</button>
+    <button class="btn-submit" style="background:var(--muted);margin-top:8px" onclick="closeModal()">取消</button>
+  `);
+  setTimeout(() => document.getElementById('modal-link-label')?.focus(), 100);
+}
+
+async function addTripLinkFromModal() {
+  const urlInput   = document.getElementById('modal-link-url');
+  const labelInput = document.getElementById('modal-link-label');
+  const addBtn     = document.getElementById('modal-link-add-btn');
+  if (!urlInput) return;
+  const url = urlInput.value.trim();
+  if (!url || !url.startsWith('http')) { showToast('請輸入有效的 URL（https://...）', 'error'); return; }
+  const trip = DataManager.getTrip(appState.currentTrip);
+  if (!trip) return;
+  const manualLabel = labelInput ? labelInput.value.trim() : '';
+  let label;
+  if (manualLabel) {
+    label = manualLabel;
+  } else {
+    if (addBtn) { addBtn.disabled = true; addBtn.textContent = '抓取中…'; }
+    label = await fetchPageTitle(url);
+    if (addBtn) { addBtn.disabled = false; addBtn.textContent = '新增'; }
+  }
+  if (!Array.isArray(trip.links)) trip.links = [];
+  trip.links.push({ id: genId('lnk'), label, url });
+  DataManager.updateTrip(trip.id, trip);
+  closeModal();
+  _refreshTripLinksList(trip);
+}
+
+function openAddTripShoppingModal() {
+  openModal(`
+    <div class="modal-title">新增購買項目</div>
+    <div class="form-group">
+      <label>項目名稱</label>
+      <input id="modal-shopping-text" type="text" placeholder="例：抹茶點心" />
+    </div>
+    <button class="btn-submit" onclick="addTripShoppingFromModal()">新增</button>
+    <button class="btn-submit" style="background:var(--muted);margin-top:8px" onclick="closeModal()">取消</button>
+  `);
+  setTimeout(() => document.getElementById('modal-shopping-text')?.focus(), 100);
+}
+
+function addTripShoppingFromModal() {
+  const input = document.getElementById('modal-shopping-text');
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) { showToast('請輸入項目名稱', 'error'); return; }
+  const trip = DataManager.getTrip(appState.currentTrip);
+  if (!trip) return;
+  if (!Array.isArray(trip.shopping)) trip.shopping = [];
+  trip.shopping.push({ id: genId('sh'), text, checked: false });
+  DataManager.updateTrip(trip.id, trip);
+  closeModal();
+  _refreshTripShoppingList(trip);
 }
 
 function _refreshTripLinksList(trip) {
@@ -1863,7 +2166,18 @@ function deletePackingItem(id) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 14. 備份
+// 14. 重新整理
+// ═══════════════════════════════════════════════════════════
+async function reloadApp() {
+  if ('serviceWorker' in navigator) {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (reg) await reg.update();
+  }
+  window.location.reload();
+}
+
+// ═══════════════════════════════════════════════════════════
+// 15. 備份
 // ═══════════════════════════════════════════════════════════
 function downloadBackup() {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -1880,7 +2194,20 @@ function downloadBackup() {
 // ═══════════════════════════════════════════════════════════
 function toggleCollapsible(id) {
   const card = document.getElementById(id);
-  if (card) card.classList.toggle('open');
+  if (!card) return;
+  const body = card.querySelector('.collapsible-body');
+  if (!body) { card.classList.toggle('open'); return; }
+  if (card.classList.contains('open')) {
+    body.style.maxHeight = body.scrollHeight + 'px';
+    card.classList.remove('open');
+    requestAnimationFrame(() => { body.style.maxHeight = '0'; });
+  } else {
+    card.classList.add('open');
+    body.style.maxHeight = body.scrollHeight + 'px';
+    body.addEventListener('transitionend', () => {
+      if (card.classList.contains('open')) body.style.maxHeight = 'none';
+    }, { once: true });
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
