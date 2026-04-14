@@ -924,6 +924,7 @@ function renderHotelBar(day) {
     el.innerHTML = appState.editMode && day
       ? `<button class="hotel-bar-add-btn" onclick="openEditHotelModal()"><span>🏠</span> 設定今晚住宿</button>`
       : '';
+    renderDeleteDayBar();
     return;
   }
 
@@ -1500,7 +1501,7 @@ function buildFlightItemHTML(f, idx) {
   return `
     <div class="booking-item">
       <div class="booking-info">
-        <div class="booking-name">✈ ${routeStr}</div>
+        <div class="booking-name">${routeStr}</div>
         ${timeLineStr ? `<div class="booking-sub">${encodeHTML(timeLineStr)}</div>` : ''}
         ${details     ? `<div class="booking-sub">${encodeHTML(details)}</div>` : ''}
         ${noteHTML}
