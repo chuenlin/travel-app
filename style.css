@@ -149,7 +149,7 @@ html, body {
 
 /* ── 6. 首頁元件 ─────────────────────────────────────────── */
 .home-header {
-  padding: 24px 16px 12px;
+  padding: 48px 16px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
