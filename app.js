@@ -195,6 +195,8 @@ function validateTripJSON(raw) {
     });
   }
   if (errors.length > 0) return { ok: false, errors };
+  // Normalize timed event order on import (minimal change: only reposition timed events)
+  data.days.forEach(day => { if (Array.isArray(day.events)) _normalizeDayEvents(day.events); });
   return { ok: true, data };
 }
 
@@ -1195,12 +1197,46 @@ function buildEventCard(ev, idx, totalCount) {
   return div;
 }
 
+// Insert ev into events array at the correct time-sorted position.
+// No time → append to end. Has time → insert after last timed event with time ≤ ev.time.
+function _insertEventSorted(events, ev) {
+  if (!ev.time) { events.push(ev); return; }
+  let insertAfter = -1;
+  for (let i = 0; i < events.length; i++) {
+    if (events[i].time && events[i].time <= ev.time) insertAfter = i;
+  }
+  events.splice(insertAfter + 1, 0, ev);
+}
+
+// Normalize a day's events: sort timed events by time while keeping timeless events
+// at their original index positions. Used on import only (minimal-change sort).
+function _normalizeDayEvents(events) {
+  if (!Array.isArray(events) || events.length < 2) return;
+  const timedIdxs   = events.reduce((acc, e, i) => { if (e.time) acc.push(i); return acc; }, []);
+  const sortedTimed = timedIdxs.map(i => events[i]).sort((a, b) => a.time.localeCompare(b.time));
+  timedIdxs.forEach((idx, j) => { events[idx] = sortedTimed[j]; });
+}
+
 function moveEvent(dayIdx, eventIdx, direction) {
   const trip = DataManager.getTrip(appState.currentTrip);
   if (!trip) return;
   const events = trip.days[dayIdx].events;
   const newIdx = eventIdx + direction;
   if (newIdx < 0 || newIdx >= events.length) return;
+
+  const ev       = events[eventIdx];
+  const neighbor = events[newIdx];
+
+  // Time constraint: only applies when the moving event has a time
+  if (ev.time && neighbor.time) {
+    if (direction === -1 && neighbor.time < ev.time) {
+      showToast(`不能移到 ${neighbor.time} 之前`, 'error'); return;
+    }
+    if (direction === 1 && neighbor.time > ev.time) {
+      showToast(`不能移到 ${neighbor.time} 之後`, 'error'); return;
+    }
+  }
+
   [events[eventIdx], events[newIdx]] = [events[newIdx], events[eventIdx]];
   DataManager.updateTrip(trip.id, trip);
   renderEventsList(events);
@@ -1369,7 +1405,7 @@ function saveEvent(dayIdx, eventIdx) {
   if (!trip) return;
 
   if (eventIdx === null) {
-    trip.days[dayIdx].events.push(ev);
+    _insertEventSorted(trip.days[dayIdx].events, ev);
     showToast(`✅ 已新增「${name}」`);
   } else {
     trip.days[dayIdx].events[eventIdx] = ev;
