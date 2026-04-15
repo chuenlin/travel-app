@@ -938,7 +938,7 @@ function renderHotelBar(day) {
   });
   if (hotel.address) {
     const mapsUrl = `https://maps.google.com?q=${encodeURIComponent(hotel.address)}`;
-    bodyContent += `<a class="map-link" href="${encodeHTML(mapsUrl)}" target="_blank" rel="noopener">📍 開啟地圖</a>`;
+    bodyContent += `<a class="map-link" href="${encodeHTML(mapsUrl)}" target="_blank" rel="noopener">🗺️ 開啟地圖</a>`;
   }
   if (hotel.cost && hotel.cost > 0) {
     const sym = CURRENCY_SYMBOLS[hotel.currency] || '';
@@ -1045,6 +1045,7 @@ function openEditHotelModal() {
     <div class="form-group">
       <label>連結</label>
       <div id="modal-links-list"></div>
+      <div style="height:1px; background:var(--border); margin:10px 0; opacity:0.6;"></div>
       <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
         <input id="modal-link-label" type="text" placeholder="顯示名稱（可留空）" maxlength="80"
           style="width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius-btn);font-size:14px;background:var(--cream);color:var(--text);outline:none;font-family:inherit" />
@@ -1130,6 +1131,7 @@ function renderEventsList(events) {
 function buildEventCard(ev, idx, totalCount) {
   const div = document.createElement('div');
   div.className = 'event-card';
+  div.style.setProperty('--dot-color', typeColor(ev.type));
   div.dataset.eventIdx = idx;
 
   const dot    = `<div class="event-dot" style="background:${typeColor(ev.type)}"></div>`;
@@ -1165,7 +1167,7 @@ function buildEventCard(ev, idx, totalCount) {
   });
   if (ev.address) {
     const mapsUrl = `https://maps.google.com?q=${encodeURIComponent(ev.address)}`;
-    bodyContent += `<a class="map-link" href="${encodeHTML(mapsUrl)}" target="_blank" rel="noopener">📍 開啟地圖</a>`;
+    bodyContent += `<a class="map-link" href="${encodeHTML(mapsUrl)}" target="_blank" rel="noopener">🗺️ 開啟地圖</a>`;
   }
 
   div.innerHTML = `
@@ -1207,12 +1209,12 @@ function moveEvent(dayIdx, eventIdx, direction) {
 function toggleEvent(card) {
   const body = card.querySelector('.event-body');
   if (card.classList.contains('expanded')) {
-    body.style.maxHeight = body.scrollHeight + 'px';
+    body.style.maxHeight = `${body.scrollHeight || 9999}px`;
     card.classList.remove('expanded');
     requestAnimationFrame(() => { body.style.maxHeight = '0'; });
   } else {
     card.classList.add('expanded');
-    body.style.maxHeight = body.scrollHeight + 'px';
+    body.style.maxHeight = `${body.scrollHeight || 9999}px`;
     body.addEventListener('transitionend', () => {
       if (card.classList.contains('expanded')) body.style.maxHeight = 'none';
     }, { once: true });
@@ -1259,7 +1261,7 @@ function _openEventModal(ev, dayIdx, eventIdx) {
   openModal(`
     <div class="modal-title">${isNew ? '新增景點' : '編輯景點'} <button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="form-group"><label>時間（HH:MM）</label>
-      <div style="display:flex;gap:8px;align-items:center">
+      <div style="display:flex;gap:8px;align-items:stretch">
         <input id="ev-time" type="time" value="${encodeHTML(v.time || '')}" style="flex:1" />
         <button type="button" class="btn-ghost-sm" onclick="document.getElementById('ev-time').value=''" title="清除時間">✕</button>
       </div></div>
@@ -1279,6 +1281,7 @@ function _openEventModal(ev, dayIdx, eventIdx) {
     <div class="form-group">
       <label>連結</label>
       <div id="modal-links-list"></div>
+      <div style="height:1px; background:var(--border); margin:10px 0; opacity:0.6;"></div>
       <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
         <div style="display:flex;gap:8px">
           <div style="display:flex;flex-direction:column;gap:6px;width:100%;">
@@ -1312,12 +1315,16 @@ function _renderModalLinks() {
     return;
   }
   el.innerHTML = _modalLinks.map((l, i) => `
-    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:600;color:var(--text)">${encodeHTML(l.label || l.url)}</div>
-        ${l.label ? `<div style="font-size:11px;color:var(--muted);word-break:break-all">${encodeHTML(l.url)}</div>` : ''}
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+      <div style="display:flex;gap:8px">
+        <div style="display:flex;flex-direction:column;gap:6px;width:100%;">
+          <input type="text" value="${encodeHTML(l.label || '')}" placeholder="顯示名稱" oninput="updateModalLinkLabel(${i}, this.value)"
+            style="padding:8px 12px; border:1.5px solid var(--border); border-radius:var(--radius-btn); font-size:14px; background:var(--cream); color:var(--text); outline:none; font-family:inherit; box-sizing:border-box; width:100%;" />
+          <input type="url" value="${encodeHTML(l.url || '')}" placeholder="https://..." oninput="updateModalLinkUrl(${i}, this.value)"
+            style="padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius-btn); font-size:14px; background:var(--cream); color:var(--text); outline:none; font-family:inherit; box-sizing:border-box; width:100%;"/>
+        </div>
+        <button type="button" class="btn-icon-del" onclick="removeModalLink(${i})">🗑</button>
       </div>
-      <button type="button" class="btn-icon-del" onclick="removeModalLink(${i})">🗑</button>
     </div>`).join('');
 }
 
