@@ -214,16 +214,46 @@ const FirebaseManager = {
       shared: _getSharedData({ ...tripData, shareCode }),
       members: {
         [deviceId]: {
-          name:     DataManager.getMyName() || (tripData.members && tripData.members[0]) || '我',
-          joinedAt: Date.now(),
-          color:    MEMBER_COLORS[0],
-          lastSeen: Date.now(),
+          name:      DataManager.getMyName() || (tripData.members && tripData.members[0]) || '我',
+          joinedAt:  Date.now(),
+          isCreator: true,
+          color:     MEMBER_COLORS[0],
+          lastSeen:  Date.now(),
         },
       },
     });
     // 建立分享碼查找表（避免需要 orderByChild 全資料庫掃描）
     await db.ref(`shareCodes/${shareCode}`).set(tripId);
     return { tripId, shareCode };
+  },
+
+  // 將現有本機行程上傳到 Firebase（保留原 tripId，產生分享碼）
+  async uploadTrip(tripData, creatorName) {
+    const shareCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const tripId    = tripData.id;
+    const deviceId  = DataManager.getDeviceId();
+    await db.ref(`trips/${tripId}`).set({
+      meta: {
+        trip_name:   tripData.trip_name,
+        cover_color: tripData.cover_color,
+        start_date:  tripData.start_date,
+        end_date:    tripData.end_date,
+        shareCode,
+        createdAt:   Date.now(),
+      },
+      shared: _getSharedData({ ...tripData, shareCode }),
+      members: {
+        [deviceId]: {
+          name:      creatorName,
+          joinedAt:  Date.now(),
+          isCreator: true,
+          color:     MEMBER_COLORS[0],
+          lastSeen:  Date.now(),
+        },
+      },
+    });
+    await db.ref(`shareCodes/${shareCode}`).set(tripId);
+    return shareCode;
   },
 
   async joinTrip(shareCode, memberName) {
@@ -299,6 +329,10 @@ const FirebaseManager = {
       const updates = { lastSeen: Date.now() };
       if (myName && (!existing || !existing.name || existing.name === '我')) {
         updates.name = myName;
+      }
+      // 新記錄補齊 joinedAt（避免比較時 undefined → 0 造成誤判）
+      if (!existing || !existing.joinedAt) {
+        updates.joinedAt = Date.now();
       }
       memberRef.update(updates);
     });
@@ -886,39 +920,48 @@ function openTrip(tripId) {
   updateTripBookingBadge();
   _switchPageDirect('page-detail', 'right');
 
-  // Firebase: 補建 shareCodes 索引（舊行程相容）、即時監聽、在線狀態
+  // Firebase: 只有具備 shareCode 的行程才啟動（純本機 / 匯入行程不需要）
   if (window.db) {
     const trip = DataManager.getTrip(tripId);
-    if (trip?.shareCode) FirebaseManager.ensureShareCodeIndex(tripId, trip.shareCode).catch(() => {});
-    FirebaseManager.listenTrip(tripId, (sharedData) => {
-      if (!sharedData) return;
-      // 若是自己剛寫入的（2 秒內），不重繪避免閃爍
-      if (Date.now() - appState.lastFbWriteTime < 2000) return;
-      const normalized = _fbNormalize(sharedData);
-      DataManager.updateTripFromFirebase(tripId, normalized);
-      if (appState.currentTrip !== tripId) return;
-      renderDetail();
-      if (appState.currentTripTab === 'booking')  renderTripBooking();
-      else if (appState.currentTripTab === 'expense') renderTripExpense();
-      else if (appState.currentTripTab === 'notes')   renderTripNotes();
-      updateTripBookingBadge();
-    });
-    FirebaseManager.updatePresence(tripId);
-    FirebaseManager._presenceInterval = setInterval(() => {
-      if (appState.currentTrip === tripId) FirebaseManager.updatePresence(tripId);
-    }, 15000);  // 15 秒更新一次，搭配 60 秒門檻
-
-    // 即時監聽 members，成員頁自動刷新在線狀態
-    FirebaseManager.listenMembers(tripId, (fbMembers) => {
-      if (appState.currentTrip !== tripId) return;
-      if (appState.currentTripTab === 'members') {
-        const trip = DataManager.getTrip(tripId);
-        if (trip) _renderMembersHTML(
-          document.getElementById('trip-members-content'), trip, fbMembers
-        );
-      }
-    });
+    if (trip?.shareCode) _initFirebaseForTrip(tripId);
   }
+}
+
+// 啟動指定行程的 Firebase 監聽器與在線狀態（供 openTrip 和 shareLocalTrip 共用）
+function _initFirebaseForTrip(tripId) {
+  if (!window.db) return;
+  const trip = DataManager.getTrip(tripId);
+  if (!trip?.shareCode) return;
+
+  FirebaseManager.ensureShareCodeIndex(tripId, trip.shareCode).catch(() => {});
+  FirebaseManager.listenTrip(tripId, (sharedData) => {
+    if (!sharedData) return;
+    // 若是自己剛寫入的（2 秒內），不重繪避免閃爍
+    if (Date.now() - appState.lastFbWriteTime < 2000) return;
+    const normalized = _fbNormalize(sharedData);
+    DataManager.updateTripFromFirebase(tripId, normalized);
+    if (appState.currentTrip !== tripId) return;
+    renderDetail();
+    if (appState.currentTripTab === 'booking')  renderTripBooking();
+    else if (appState.currentTripTab === 'expense') renderTripExpense();
+    else if (appState.currentTripTab === 'notes')   renderTripNotes();
+    updateTripBookingBadge();
+  });
+  FirebaseManager.updatePresence(tripId);
+  // 清除舊的 presence interval 再重建
+  if (FirebaseManager._presenceInterval) clearInterval(FirebaseManager._presenceInterval);
+  FirebaseManager._presenceInterval = setInterval(() => {
+    if (appState.currentTrip === tripId) FirebaseManager.updatePresence(tripId);
+  }, 15000);
+
+  // 即時監聽 members，成員頁自動刷新在線狀態
+  FirebaseManager.listenMembers(tripId, (fbMembers) => {
+    if (appState.currentTrip !== tripId) return;
+    if (appState.currentTripTab === 'members') {
+      const t = DataManager.getTrip(tripId);
+      if (t) _renderMembersHTML(document.getElementById('trip-members-content'), t, fbMembers);
+    }
+  });
 }
 
 function goHome() {
@@ -1601,7 +1644,10 @@ function _normalizeDayEvents(events) {
 function moveEvent(dayIdx, eventIdx, direction) {
   const trip = DataManager.getTrip(appState.currentTrip);
   if (!trip) return;
-  const events = trip.days[dayIdx].events;
+  const day = trip.days[dayIdx];
+  if (!day) return;
+  if (!Array.isArray(day.events)) day.events = [];
+  const events = day.events;
   const newIdx = eventIdx + direction;
   if (newIdx < 0 || newIdx >= events.length) return;
 
@@ -1641,14 +1687,16 @@ function toggleEvent(card) {
 function deleteEvent(dayIdx, eventIdx) {
   const trip = DataManager.getTrip(appState.currentTrip);
   if (!trip) return;
-  const ev = trip.days[dayIdx].events[eventIdx];
-  trip.days[dayIdx].events.splice(eventIdx, 1);
+  const day = trip.days[dayIdx];
+  if (!day || !Array.isArray(day.events)) return;
+  const ev = day.events[eventIdx];
+  day.events.splice(eventIdx, 1);
   DataManager.updateTrip(trip.id, trip);
   showToast(`已刪除「${ev.name}」`);
-  const events = trip.days[dayIdx].events;
+  const events = day.events;
   renderEventsList(events);
   renderDriveWarning(events);
-  renderHotelBar(trip.days[dayIdx]);
+  renderHotelBar(day);
   updateTripBookingBadge();
 }
 
@@ -1785,20 +1833,24 @@ function saveEvent(dayIdx, eventIdx) {
   const trip = DataManager.getTrip(appState.currentTrip);
   if (!trip) return;
 
+  // Firebase 回傳時空陣列可能為 null；確保 events 永遠是陣列
+  const day = trip.days[dayIdx];
+  if (!day) return;
+  if (!Array.isArray(day.events)) day.events = [];
+
   if (eventIdx === null) {
-    _insertEventSorted(trip.days[dayIdx].events, ev);
+    _insertEventSorted(day.events, ev);
     showToast(`✅ 已新增「${name}」`);
   } else {
-    trip.days[dayIdx].events[eventIdx] = ev;
+    day.events[eventIdx] = ev;
     showToast(`✅ 已更新「${name}」`);
   }
   DataManager.updateTrip(trip.id, trip);
   closeModal();
 
-  const events = trip.days[dayIdx].events;
-  renderEventsList(events);
-  renderDriveWarning(events);
-  renderHotelBar(trip.days[dayIdx]);
+  renderEventsList(day.events);
+  renderDriveWarning(day.events);
+  renderHotelBar(day);
   updateTripBookingBadge();
 }
 
@@ -2475,13 +2527,23 @@ function _renderMembersHTML(el, trip, fbMembers) {
   const myDeviceId = DataManager.getDeviceId();
 
   // 合併來源：Firebase members（含 deviceId）+ shared.members（只有名字的舊格式）
-  // 依 joinedAt 排序，第一位即為創建者
   const fbEntries = Object.entries(fbMembers).filter(([, m]) => m && m.name);
-  fbEntries.sort((a, b) => (a[1].joinedAt || 0) - (b[1].joinedAt || 0));
+  // 優先用 isCreator 旗標，沒有旗標的舊行程退回 joinedAt 排序
+  const hasCreatorFlag = fbEntries.some(([, m]) => m.isCreator);
+  if (hasCreatorFlag) {
+    // isCreator=true 排在最前，其餘依 joinedAt
+    fbEntries.sort((a, b) => {
+      if (a[1].isCreator && !b[1].isCreator) return -1;
+      if (!a[1].isCreator && b[1].isCreator) return 1;
+      return (a[1].joinedAt || 0) - (b[1].joinedAt || 0);
+    });
+  } else {
+    fbEntries.sort((a, b) => (a[1].joinedAt || 0) - (b[1].joinedAt || 0));
+  }
   const fbList  = fbEntries.map(([deviceId, m]) => ({ ...m, deviceId }));
   const fbNames = new Set(fbList.map(m => m.name));
 
-  // 創建者 = joinedAt 最早的成員（本機行程則為 members[0]）
+  // 創建者 = isCreator 旗標或 joinedAt 最早的成員（本機行程則為 members[0]）
   const creatorDeviceId = fbList.length > 0 ? fbList[0].deviceId : null;
   const creatorName     = fbList.length > 0 ? fbList[0].name : (trip.members?.[0] || null);
 
@@ -2552,7 +2614,7 @@ function _renderMembersHTML(el, trip, fbMembers) {
     });
   }
 
-  // 分享碼區塊
+  // 分享碼區塊 / 分享按鈕
   if (trip.shareCode) {
     html += `
       <div class="share-code-section">
@@ -2565,7 +2627,11 @@ function _renderMembersHTML(el, trip, fbMembers) {
   }
 
   html += '</div>';
-  html += `<button class="btn-submit" style="margin-top:12px" onclick="openAddMemberModal()">＋ 新增成員</button>`;
+
+  if (!trip.shareCode) {
+    html += `<button class="btn-submit" style="margin-top:12px;background:var(--green)" onclick="openShareTripModal()">🔗 分享此行程</button>`;
+  }
+  html += `<button class="btn-submit" style="margin-top:8px" onclick="openAddMemberModal()">＋ 新增成員</button>`;
 
   // 退出行程按鈕（只有 Firebase 行程、且自己在成員清單中才顯示）
   if (trip.shareCode && myFbEntry) {
@@ -2573,6 +2639,52 @@ function _renderMembersHTML(el, trip, fbMembers) {
   }
 
   el.innerHTML = html;
+}
+
+function openShareTripModal() {
+  const myName = DataManager.getMyName();
+  openModal(`
+    <div class="modal-title">分享此行程 <button class="modal-close" onclick="closeModal()">✕</button></div>
+    <p style="font-size:14px;color:var(--muted);margin-bottom:16px">上傳行程到雲端後產生分享碼，旅伴可用分享碼加入。</p>
+    <div class="form-group">
+      <label class="form-label">你的名字</label>
+      <input id="f-share-my-name" class="form-input" placeholder="輸入你的名字" value="${encodeHTML(myName)}" />
+    </div>
+    <button class="btn-submit" onclick="shareLocalTrip()">🔗 產生分享碼</button>
+  `);
+  setTimeout(() => document.getElementById('f-share-my-name')?.focus(), 100);
+}
+
+async function shareLocalTrip() {
+  const tripId   = appState.currentTrip;
+  const nameEl   = document.getElementById('f-share-my-name');
+  const myName   = nameEl ? nameEl.value.trim() : '';
+  if (!myName) { showToast('請輸入你的名字', 'error'); return; }
+  if (!window.db) { showToast('需要網路連線才能分享行程', 'error'); return; }
+
+  const trip = DataManager.getTrip(tripId);
+  if (!trip) return;
+
+  const btn = document.querySelector('#modal-content .btn-submit');
+  if (btn) { btn.disabled = true; btn.textContent = '上傳中…'; }
+
+  try {
+    DataManager.setMyName(myName);
+    const shareCode = await FirebaseManager.uploadTrip(trip, myName);
+    // 更新本機行程加入 shareCode
+    DataManager.updateTrip(tripId, { shareCode });
+    DataManager.addMyTripId(tripId);
+    closeModal();
+    // 啟動 Firebase 監聽器（此時 trip 已有 shareCode）
+    _initFirebaseForTrip(tripId);
+    // 重新渲染成員頁
+    renderTripMembers();
+    // 顯示分享碼
+    _showShareCodeModal(tripId, shareCode, trip.trip_name);
+  } catch (e) {
+    showToast('分享失敗，請檢查網路連線', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '🔗 產生分享碼'; }
+  }
 }
 
 function confirmLeaveTrip() {

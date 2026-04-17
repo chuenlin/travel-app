@@ -1,3 +1,25 @@
+## [v1.9.2] 2026-04-18
+### 新增
+- 本機 / 匯入行程可從成員頁「🔗 分享此行程」按鈕上傳到 Firebase 並產生分享碼：
+  - 輸入自己名字 → 行程資料上傳到 Firebase（保留原 tripId）→ 顯示分享碼
+  - 上傳後自動啟動即時監聽，旅伴可用分享碼加入
+
+### 修改
+- `openTrip` 的 Firebase 監聽器設定提取為 `_initFirebaseForTrip(tripId)`，供首次開啟與分享後共用
+- `FirebaseManager` 新增 `uploadTrip(tripData, creatorName)` 方法（保留現有 tripId，不同於 `createTrip` 的 push 新 ID）
+
+---
+
+## [v1.9.1] 2026-04-18
+### 修復
+- 創建行程後第二位以分享碼加入的成員顯示為創建者：
+  - `FirebaseManager.createTrip` 建立成員記錄時加入 `isCreator: true` 旗標
+  - `_renderMembersHTML` 優先以 `isCreator` 旗標識別創建者，沒有旗標的舊行程退回 `joinedAt` 排序（向下相容）
+  - `updatePresence` 在建立全新 Firebase 記錄時補寫 `joinedAt`（防止 `undefined → 0` 誤判）
+- 匯入 JSON 行程（無 `shareCode`）開啟時不啟動 Firebase 功能（`listenTrip`、`updatePresence`、`listenMembers`），避免建立無意義的孤立成員記錄
+
+---
+
 ## [v1.9.0] 2026-04-17
 ### 新增
 - 成員頁顯示創建者標記（👑 創建者），依 `joinedAt` 時間判斷最早加入者

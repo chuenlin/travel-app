@@ -208,7 +208,7 @@ html, body {
 .trip-title { font-family:'Nunito',sans-serif; font-size:18px; font-weight:700; color:#fff; margin-bottom:4px; }
 .trip-days  { font-size:12px; color:rgba(255,255,255,0.85); }
 .trip-meta  { padding:10px 16px; display:flex; align-items:center; gap:8px; }
-.trip-date  { font-size:12px; color:var(--muted); flex:1; }
+.trip-date  { font-size:13px; color:var(--muted); flex:1; }
 .member-avatars { display:flex; }
 .member-avatar {
   width:26px; height:26px; border-radius:50%;
