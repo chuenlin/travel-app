@@ -160,6 +160,7 @@ html, body {
   /*background: var(--cream);*/
   z-index: 10;
 }
+.home-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .btn-import {
   display: flex;
   align-items: center;
@@ -173,6 +174,14 @@ html, body {
   color: var(--green);
   cursor: pointer;
   min-height: 44px;
+}
+.btn-join-trip {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 14px;
+  background: var(--green); color: #fff;
+  border: none; border-radius: var(--radius-tag);
+  font-size: 13px; font-weight: 600;
+  cursor: pointer; min-height: 44px;
 }
 .trips-list { padding: 12px 16px 80px; display: flex; flex-direction: column; gap: 12px; }
 .trip-card {
@@ -808,6 +817,42 @@ html, body {
 .member-list-name { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
 .member-list-note { font-size: 13px; color: var(--muted); line-height: 1.4; }
 .member-list-actions { display: flex; gap: 0; flex-shrink: 0; padding-top: 2px; }
+.online-dot {
+  display: inline-block; width: 8px; height: 8px;
+  border-radius: 50%; margin-left: 6px; vertical-align: middle;
+}
+.online-dot.online  { background: #2ecc71; }
+.online-dot.offline { background: var(--border); }
+.member-tag {
+  display: inline-block; font-size: 11px; font-weight: 600;
+  padding: 1px 7px; border-radius: 20px; margin-left: 5px;
+  vertical-align: middle;
+}
+.member-tag.creator { background: #fff3cd; color: #856404; }
+.member-tag.me      { background: var(--green-light); color: var(--green); }
+.share-code-section {
+  padding: 12px 16px; border-top: 1px solid var(--border);
+}
+.share-code-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.share-code-row { display: flex; align-items: center; gap: 12px; }
+.share-code-value {
+  font-size: 22px; font-weight: 700; letter-spacing: 4px;
+  color: var(--green); font-family: 'Nunito', sans-serif;
+}
+/* 建立行程成功 Modal 裡的分享碼 */
+.share-code-display {
+  display: flex; align-items: center; justify-content: center; gap: 16px;
+  background: var(--green-light); border-radius: var(--radius-card);
+  padding: 16px; margin: 8px 0;
+}
+.share-code-display .share-code-value {
+  font-size: 28px; letter-spacing: 6px;
+}
+.btn-copy-share {
+  padding: 8px 16px; background: var(--green); color: #fff;
+  border: none; border-radius: var(--radius-btn); font-size: 14px;
+  font-weight: 600; cursor: pointer; min-height: 44px;
+}
 
 /* ── 22. Packing page header ─────────────────────────────── */
 .packing-page-header {

@@ -1,9 +1,10 @@
-node_modules/
 .DS_Store
 Thumbs.db
 *.log
 .claude/
 agents/
 skills/
+.env
 .env.example
 START_PROMPT.md
+firebase-config.js

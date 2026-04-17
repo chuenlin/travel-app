@@ -1,3 +1,42 @@
+## [v1.9.0] 2026-04-17
+### 新增
+- 成員頁顯示創建者標記（👑 創建者），依 `joinedAt` 時間判斷最早加入者
+- 成員頁顯示自己的「我」標記（綠色）
+- 成員頁新增「退出行程」按鈕（Firefox 行程且本人已加入才顯示）：
+  - 從 Firebase `members/{deviceId}` 刪除自己的裝置記錄（其他人成員頁看不到）
+  - 從 Firebase `shared/members` 移除自己的名字
+  - 本機移除行程並返回首頁
+- 退出 vs 刪除差異：刪除只清本機，退出同時清除 Firebase 成員記錄
+- 名字持久化：建立/加入行程時儲存自己名字到 localStorage，`updatePresence` 自動修復舊版「我」的記錄
+
+### 修改
+- `DataManager` 新增 `getMyName()` / `setMyName()` 管理本機顯示名稱
+- `FirebaseManager.updatePresence()` 改為讀取後更新，自動修正 `name: '我'` 的舊記錄
+
+---
+
+## [v1.8.0] 2026-04-17
+### 新增
+- Firebase Realtime Database 多人即時同步：
+  - 新增行程時自動建立 Firebase 記錄，產生 6 碼分享碼（例：CANDA25）
+  - 首頁新增「🔗 加入行程」按鈕，輸入分享碼 + 名字即可加入
+  - 進入行程後啟動即時監聽（`listenTrip`），其他成員的變更即時同步
+  - 成員頁顯示在線狀態（綠點 = 60 秒內有活動），每 30 秒更新一次
+  - 成員頁顯示分享碼，可直接複製
+  - 建立行程成功後彈出分享碼 Modal
+- 新增 `FirebaseManager`（雲端資料層），`DataManager` 維持 localStorage 職責，兩者不混用
+- 新增 `firebase-config.js`（從 `.env` 讀取，已加入 `.gitignore`）
+- 新增裝置 ID（`travel_device_id`）和行程 ID 清單（`travel_my_trips`）機制
+
+### 修改
+- `createTrip()` 改為 async，優先寫入 Firebase，無網路時降級為本機儲存
+- `openTrip()` / `goHome()` 加入 Firebase 監聽器管理與在線狀態更新
+- `DataManager.deleteTrip()` 一併清除 `travel_my_trips`
+- `DataManager.updateTrip()` 加入防抖 Firebase 同步（600ms）
+- `sw.js` 快取版本升至 `v3`，新增快取 `firebase-config.js`
+
+---
+
 ## [v1.7.0] 2026-04-16
 ### 新增
 - 景點時間自動排序：

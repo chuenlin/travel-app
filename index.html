@@ -11,6 +11,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="style.css" />
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="firebase-config.js"></script>
 <script defer src="app.js"></script>
 </head>
 <body>
@@ -33,9 +36,10 @@
   <div id="page-home" class="page">
     <div class="home-header">
       <span class="page-title">✈ 我的行程</span>
-      <button class="btn-import" onclick="document.getElementById('json-file-input').click()">
-        📂 匯入行程
-      </button>
+      <div class="home-header-actions">
+        <button class="btn-join-trip" onclick="openJoinTripModal()">🔗 加入行程</button>
+        <button class="btn-import" onclick="document.getElementById('json-file-input').click()">📂 匯入行程</button>
+      </div>
     </div>
     <div id="trips-list" class="trips-list"></div>
     <div id="empty-home" class="empty-state" style="display:none">

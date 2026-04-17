@@ -9,30 +9,38 @@
 ## 技術架構
 
 - **前端**: HTML + CSS + JavaScript（分離為 `index.html`、`style.css`、`app.js`）
-- **資料儲存**: localStorage（單一裝置本機儲存，無需任何帳號或網路）
+- **同步資料**: Firebase Realtime Database（免費額度，多人即時同步）
+- **本機資料**: localStorage（裝置 ID、我的行程清單、打包清單）
 - **離線**: PWA Service Worker（`sw.js`）
-- **資料格式**: JSON（localStorage 讀寫）
-- **不使用任何付費 API、不使用 Firebase**
+- **資料格式**: JSON
+- **不使用任何付費 API**
 
 ## 資料儲存說明
 
-所有資料（行程、景點、預訂狀態、打包清單）存於瀏覽器 **localStorage**，key 為 `travel_app_data`。
+### 資料分層
 
-```
-localStorage['travel_app_data'] = JSON.stringify({
-  trips: [ ...所有行程資料... ],
-  packing: [ ...打包清單... ],
-  links: [ ...重要連結... ]
-})
-```
+| 資料類型 | 存放位置 | 說明 |
+|---------|---------|------|
+| 景點、住宿、備註 | Firebase shared | 所有成員即時同步 |
+| 預訂狀態、費用 | Firebase shared | 所有成員即時同步 |
+| 個人機票、個人備忘 | Firebase personal/{deviceId} | 只有自己看到 |
+| 裝置 ID | localStorage `travel_device_id` | 永久保存，識別身份用 |
+| 我加入的行程列表 | localStorage `travel_my_trips` | 本機索引 |
+| 打包清單 | localStorage `travel_packing` | 純個人，不需同步 |
 
-**特性與限制：**
-- ✅ 零設定、零成本、離線可用
-- ✅ 資料永久保存在瀏覽器（不清快取就不會消失）
-- ⚠️ 資料只存在當前裝置 / 瀏覽器，換裝置需重新匯入 JSON
-- ⚠️ 清除瀏覽器資料會刪除所有行程（App 內提供「備份匯出」功能因應）
+### 成員識別（無需登入）
 
-**DataManager 是唯一的資料存取層，所有讀寫都透過它，禁止直接操作 localStorage。**
+- 第一次開啟 App 自動產生裝置 ID（`dev_` + timestamp + random）
+- 加入行程時輸入分享碼 + 自己名字，系統將 deviceId 與名字綁定
+- 換裝置需重新用分享碼加入
+
+### 分享碼
+
+- 格式：6 碼大寫英數字，例如 `CANDA25`
+- 建立行程時自動產生，可複製或顯示 QR Code 分享給旅伴
+- 旅伴輸入分享碼 + 名字即可加入，無需帳號
+
+**FirebaseManager 是唯一的雲端資料存取層，DataManager 處理 localStorage，兩者不混用。**
 
 ## 檔案結構
 
@@ -53,12 +61,15 @@ travel-app/
 ├── skills/
 │   ├── ui-builder/SKILL.md  # UI 開發規範
 │   ├── csv-importer/SKILL.md # JSON 匯入規範
+│   ├── firebase/SKILL.md    # Firebase 同步規範
 │   └── tester/SKILL.md      # 測試規範
 ├── index.html               # HTML 結構（只含標記，不含 CSS 或 JS）
-├── style.css                # 所有樣式（從 index.html 分離）
-├── app.js                   # 所有 JavaScript（從 index.html 分離）
+├── style.css                # 所有樣式
+├── app.js                   # 所有 JavaScript
+├── firebase-config.js       # Firebase 設定（從 .env 讀取，不 commit）
 ├── manifest.json            # PWA 設定
-└── sw.js                    # Service Worker
+├── sw.js                    # Service Worker
+└── .env.example             # 環境變數範本
 ```
 
 ## 核心功能規格
@@ -232,7 +243,8 @@ travel-app/
 - **頁面切換**：用 CSS class `hidden` / `slide-left` 控制，不用 router
 - **錯誤處理**：JSON 解析失敗要有 Toast + Modal 列出具體錯誤欄位
 - **不使用任何外部 JS 框架**（React/Vue 等），保持零依賴
-- **不使用 Firebase**，資料完全存於 localStorage
+- **Firebase 只透過 FirebaseManager 存取**，不直接呼叫 SDK
+- **localStorage 只透過 DataManager 存取**，兩者職責不混用
 
 ## CHANGELOG.md 格式
 
@@ -254,7 +266,8 @@ travel-app/
 
 - 使用者上傳的 JSON 必須先通過 schema 驗證再解析
 - 所有用戶輸入透過 `encodeHTML()` 後才插入 DOM（防 XSS）
-- 不引入任何第三方 CDN 腳本
+- Firebase config 存於 `.env`，`.env` 已加入 `.gitignore`，**絕不 commit**
+- Firebase Database 規則限制只允許有效 tripId 路徑讀寫
 
 ---
 
@@ -262,6 +275,6 @@ travel-app/
 
 | Agent | 負責範圍 |
 |-------|---------|
-| `builder` | UI 開發、功能實作、localStorage 整合、維護 CHANGELOG.md |
+| `builder` | UI 開發、功能實作、Firebase 整合、localStorage 整合、維護 CHANGELOG.md |
 | `reviewer` | Code review、效能、安全性、檢查三檔案是否有混寫 |
 | `tester` | JSON 驗證、UI 互動、PWA、刪除流程、模式切換測試 |
