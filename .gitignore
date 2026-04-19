@@ -7,4 +7,3 @@ skills/
 .env
 .env.example
 START_PROMPT.md
-firebase-config.js
