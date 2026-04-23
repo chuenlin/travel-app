@@ -1869,8 +1869,12 @@ function renderTripBooking() {
   const flights        = Array.isArray(trip.flights) ? trip.flights : [];
   const transportItems = [];
   const otherItems     = [];
+  const hotelItems     = [];
 
   (trip.days || []).forEach((day, di) => {
+    if (day.hotel && (day.hotel.status === 'pending' || day.hotel.status === 'booked')) {
+      hotelItems.push({ day, di });
+    }
     (day.events || []).forEach((ev, ei) => {
       if (ev.status === 'pending' || ev.status === 'booked') {
         const item = { day, ev, di, ei };
@@ -1913,7 +1917,7 @@ function renderTripBooking() {
   const sortedTransport = sortBookingItems(transportItems);
   if (sortedTransport.length > 0) {
     const pendingCount = sortedTransport.filter(x => x.ev.status === 'pending').length;
-    html += `<div class="collapsible-card open" id="booking-transport-card">
+    html += `<div class="collapsible-card" id="booking-transport-card">
       <button class="collapsible-hdr" onclick="toggleCollapsible('booking-transport-card')">
         <span>🚌 交通景點</span>
         <span class="collapsible-hdr-title"></span>
@@ -1928,10 +1932,45 @@ function renderTripBooking() {
     </div>`;
   }
 
+  // 住宿預訂（day.hotel，有 pending/booked 才顯示）
+  if (hotelItems.length > 0) {
+    const pendingCount = hotelItems.filter(x => x.day.hotel.status === 'pending').length;
+    const hotelRows = hotelItems
+      .sort((a, b) => (a.day.date || '').localeCompare(b.day.date || ''))
+      .map(({ day, di }) => {
+        const h = day.hotel;
+        const statusLabel = h.status === 'booked' ? '✓ 已訂' : '⚠ 需訂';
+        const noteHTML = h.note ? `<div class="booking-note">${encodeHTML(h.note)}</div>` : '';
+        return `
+          <div class="booking-item">
+            <div class="booking-info">
+              <div class="booking-name">${encodeHTML(h.name)}</div>
+              <div class="booking-sub">${encodeHTML(formatDate(day.date))} · 住宿</div>
+              ${noteHTML}
+            </div>
+            <button class="booking-status-btn ${encodeHTML(h.status)}"
+              onclick="toggleHotelBookingStatus(${di})">
+              ${statusLabel}
+            </button>
+          </div>`;
+      }).join('');
+    html += `<div class="collapsible-card" id="booking-hotel-card">
+      <button class="collapsible-hdr" onclick="toggleCollapsible('booking-hotel-card')">
+        <span>🏨 住宿</span>
+        <span class="collapsible-hdr-title"></span>
+        ${pendingCount > 0 ? `<span class="collapsible-hdr-badge-red">${pendingCount} 待訂</span>` : ''}
+        <span class="collapsible-hdr-arrow">▾</span>
+      </button>
+      <div class="collapsible-body">
+        <div class="booking-list">${hotelRows}</div>
+      </div>
+    </div>`;
+  }
+
   const sortedOther = sortBookingItems(otherItems);
   if (sortedOther.length > 0) {
     const pendingCount = sortedOther.filter(x => x.ev.status === 'pending').length;
-    html += `<div class="collapsible-card open" id="booking-other-card">
+    html += `<div class="collapsible-card" id="booking-other-card">
       <button class="collapsible-hdr" onclick="toggleCollapsible('booking-other-card')">
         <span>🎫 其他預訂</span>
         <span class="collapsible-hdr-title"></span>
@@ -2167,7 +2206,21 @@ function toggleTripBookingStatus(tripId, dayIdx, evIdx) {
   if (!trip) return;
   const ev = trip.days[dayIdx].events[evIdx];
   ev.status = ev.status === 'booked' ? 'pending' : 'booked';
+  // 標記本機寫入時間，讓 listenTrip 在 2 秒內不用舊 Firebase 資料覆蓋本機狀態
+  appState.lastFbWriteTime = Date.now();
   DataManager.updateTrip(tripId, trip);
+  renderTripBooking();
+  updateTripBookingBadge();
+}
+
+function toggleHotelBookingStatus(dayIdx) {
+  const trip = DataManager.getTrip(appState.currentTrip);
+  if (!trip) return;
+  const hotel = trip.days[dayIdx]?.hotel;
+  if (!hotel) return;
+  hotel.status = hotel.status === 'booked' ? 'pending' : 'booked';
+  appState.lastFbWriteTime = Date.now();
+  DataManager.updateTrip(trip.id, trip);
   renderTripBooking();
   updateTripBookingBadge();
 }

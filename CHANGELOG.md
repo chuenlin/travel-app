@@ -1,3 +1,19 @@
+## [v1.9.4] 2026-04-19
+### 修復
+- 預訂 tab-badge 顯示數字但預訂頁看不到任何項目：
+  - 原因：`updateTripBookingBadge` 計入 `day.hotel.status === 'pending'`，但 `renderTripBooking` 的列表完全沒有顯示住宿（`day.hotel`）
+  - 修復：預訂頁新增「🏨 住宿」區塊，列出所有 `status === 'pending'` 或 `'booked'` 的住宿項目，可點擊切換狀態（同景點項目）
+
+---
+
+## [v1.9.3] 2026-04-19
+### 修復
+- 預訂頁切換需訂 ↔ 已訂後，Tab 的需訂數字 badge 未更新：
+  - 原因：`toggleTripBookingStatus` 沒有設 `appState.lastFbWriteTime`，Firebase `listenTrip` 在 debounce 600ms 內以舊資料回寫，導致 badge 被覆蓋成舊數字
+  - 修復：與 `saveEditFbMember` 相同的 race condition 解法，切換前先設 `appState.lastFbWriteTime = Date.now()` 阻擋 2 秒內的 listener re-render
+
+---
+
 ## [v1.9.2] 2026-04-18
 ### 新增
 - 本機 / 匯入行程可從成員頁「🔗 分享此行程」按鈕上傳到 Firebase 並產生分享碼：
