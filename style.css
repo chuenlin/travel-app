@@ -298,6 +298,43 @@ html, body {
 .weather-rain { font-size:15px; color:var(--blue); font-weight:500; }
 .weather-outfit { font-size:15px; color:var(--muted); margin-top:2px; }
 .weather-icon { font-size:35px; }
+.weather-no-data {
+  margin: 12px 16px;
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--muted);
+  text-align: center;
+  background: var(--card);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+}
+.weather-loading {
+  margin: 12px 16px;
+  padding: 10px 16px;
+  font-size: 14px;
+  color: var(--muted);
+  text-align: center;
+  background: var(--card);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+}
+.weather-city-row {
+  display: flex; align-items: center; gap: 8px;
+  margin: 8px 16px 0;
+}
+.weather-city-label { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.weather-city-input {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 14px;
+  font-family: inherit;
+  background: var(--card);
+  color: var(--text);
+  outline: none;
+}
+.weather-city-input:focus { border-color: var(--primary); }
 
 /* Day 切換列 */
 .days-scroll-wrap { position: relative; }
@@ -463,26 +500,29 @@ html, body {
 }
 
 /* 住宿 Bar */
+.hotel-bar-card {
+  margin: 0 16px 16px;
+  background: var(--green-light); border: 1.5px solid var(--green);
+  border-radius: var(--radius-card); overflow: hidden; position: relative;
+}
 .hotel-bar-header {
-  margin: 0 16px 0;
-  background: #f3e5f5; border: 1.5px solid var(--purple);
-  border-radius: var(--radius-card); padding: 12px 16px;
   display: flex; align-items: center; gap: 12px;
-  cursor: pointer; transition: border-radius 0.18s;
+  padding: 12px 14px; cursor: pointer; min-height: 54px;
 }
-.hotel-bar-header.open { border-radius: var(--radius-card) var(--radius-card) 0 0; }
 .hotel-bar-body {
-  margin: 0 16px 0;
-  background: #fdf5ff;
-  border-radius: 0 0 var(--radius-card) var(--radius-card);
-  overflow: hidden; max-height: 0;
+  max-height: 0; overflow: hidden;
   transition: max-height 0.22s cubic-bezier(0.4,0,0.2,1);
+  transform: translateZ(0);
 }
-.hotel-bar-body.open {
-  border: 1.5px solid var(--purple); border-top: none;
-  margin-bottom: 16px;
+.hotel-bar-body-inner { padding: 0 14px 14px 44px; }
+.hotel-bar-card.expanded::before {
+  content: ""; position: absolute;
+  left: 23px; top: 36px; bottom: 14px;
+  border-left: 3px dashed var(--accent); opacity: 0.7;
+  pointer-events: none;
 }
-.hotel-bar-body-inner { padding: 10px 14px 14px; }
+.hotel-arrow { font-size: 14px; color: var(--muted); transition: transform 0.2s; flex-shrink: 0; }
+.hotel-bar-card.expanded .hotel-arrow { transform: rotate(180deg); }
 .hotel-bar-add-btn {
   display: flex; align-items: center; gap: 8px;
   margin: 0 16px 16px; padding: 12px 16px;
@@ -493,10 +533,8 @@ html, body {
 }
 .hotel-icon { font-size: 24px; }
 .hotel-info { flex: 1; }
-.hotel-name { font-size: 15px; font-weight: 600; color: var(--purple); }
+.hotel-name { font-size: 15px; font-weight: 600; color: var(--green); }
 .hotel-sub  { font-size: 12px; color: var(--muted); margin-top: 2px; }
-.hotel-arrow { font-size: 14px; color: var(--muted); transition: transform 0.2s; flex-shrink: 0; }
-.hotel-bar-header.open .hotel-arrow { transform: rotate(180deg); }
 
 /* ── 10. 預訂清單 ────────────────────────────────────────── */
 .booking-list { padding: 0; display: flex; flex-direction: column; gap: 0; }

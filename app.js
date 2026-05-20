@@ -1122,6 +1122,7 @@ function toggleEditMode() {
   const trip   = DataManager.getTrip(appState.currentTrip);
   const day    = trip ? trip.days[appState.currentDay] : null;
   const events = day ? (day.events || []) : [];
+  renderWeather(day);
   renderEventsList(events);
   renderHotelBar(day);
   if (trip) renderDayButtons(trip);
@@ -1245,44 +1246,66 @@ function _buildWeatherHTML(w, isReal) {
     </div>`;
 }
 
-function _getSimulatedWeather(day) {
-  const seed = new Date(day.date).getDay();
-  const data = [
-    { icon:'☀️',  tempHigh:'26°C', tempLow:'19°C', rain:'5%',  outfit:'輕薄舒適，防曬必備' },
-    { icon:'⛅',  tempHigh:'22°C', tempLow:'16°C', rain:'30%', outfit:'建議帶薄外套' },
-    { icon:'🌧️', tempHigh:'18°C', tempLow:'14°C', rain:'80%', outfit:'帶雨傘，防水外套' },
-    { icon:'🌤️', tempHigh:'24°C', tempLow:'17°C', rain:'15%', outfit:'T-shirt + 薄外套' },
-  ];
-  return data[seed % data.length];
+function _buildNoWeatherHTML() {
+  return `<div class="weather-no-data">無法取得天氣資訊</div>`;
 }
 
-async function _fetchWeatherForTrip(trip, day) {
+function _buildWeatherCityInputHTML(city) {
+  return `<div class="weather-city-row">
+    <span class="weather-city-label">🌍 天氣地點</span>
+    <input id="weather-city-input" class="weather-city-input"
+      type="text" value="${encodeHTML(city || '')}" maxlength="30"
+      placeholder="輸入城市名稱（如：Tokyo）"
+      onblur="saveWeatherCity(this.value)"
+      onkeydown="if(event.key==='Enter')this.blur()" />
+  </div>`;
+}
+
+function saveWeatherCity(value) {
+  const trip = DataManager.getTrip(appState.currentTrip);
+  if (!trip) return;
+  const day = trip.days[appState.currentDay];
+  if (!day) return;
+  day.weather_city = value.trim();
+  DataManager.updateTrip(trip.id, trip);
+  renderWeather(day);
+}
+
+async function _fetchWeatherForTrip(day) {
   const bar = document.getElementById('weather-bar');
   if (!bar) return;
 
-  const cityName = day.label || trip.trip_name || '';
-  const cacheKey = cityName.toLowerCase().trim();
+  const cityName = (day.weather_city || '').trim();
+  const cityRow  = appState.editMode ? _buildWeatherCityInputHTML(cityName) : '';
 
+  if (!cityName) {
+    bar.innerHTML = cityRow + _buildNoWeatherHTML();
+    return;
+  }
+
+  const cacheKey = cityName.toLowerCase();
   let lat, lon;
   if (_weatherGeoCache[cacheKey]) {
     ({ lat, lon } = _weatherGeoCache[cacheKey]);
-  } else if (cacheKey) {
+  } else {
     try {
       const geoRes = await fetch(
         `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cacheKey)}&count=1&language=zh&format=json`,
         { signal: AbortSignal.timeout(5000) }
       );
       const geoData = await geoRes.json();
+      console.log('[Weather] Geocoding result:', geoData);
       if (geoData.results && geoData.results.length > 0) {
         lat = geoData.results[0].latitude;
         lon = geoData.results[0].longitude;
         _weatherGeoCache[cacheKey] = { lat, lon };
       }
-    } catch (_) { /* ignore */ }
+    } catch (err) { console.warn('[Weather] Geocoding error:', err); }
   }
 
   if (!lat || !lon) {
-    bar.innerHTML = _buildWeatherHTML(_getSimulatedWeather(day), false);
+    console.warn('[Weather] No coordinates found for:', cityName);
+    bar.innerHTML = cityRow + _buildNoWeatherHTML();
     return;
   }
 
@@ -1292,12 +1315,12 @@ async function _fetchWeatherForTrip(trip, day) {
     w = _weatherDataCache[dataCacheKey];
   } else {
     try {
-      const wRes = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode&timezone=auto&start_date=${day.date}&end_date=${day.date}`,
-        { signal: AbortSignal.timeout(5000) }
-      );
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode&timezone=auto&start_date=${day.date}&end_date=${day.date}`;
+      console.log('[Weather] Fetching:', url);
+      const wRes = await fetch(url, { signal: AbortSignal.timeout(5000) });
       const wData = await wRes.json();
-      if (wData.daily && wData.daily.temperature_2m_max) {
+      console.log('[Weather] Forecast result:', wData);
+      if (wData.daily && wData.daily.temperature_2m_max && wData.daily.temperature_2m_max.length > 0) {
         const tempMax  = Math.round(wData.daily.temperature_2m_max[0]);
         const tempMin  = Math.round(wData.daily.temperature_2m_min[0]);
         const rainProb = wData.daily.precipitation_probability_max[0] || 0;
@@ -1311,23 +1334,31 @@ async function _fetchWeatherForTrip(trip, day) {
         };
         _weatherDataCache[dataCacheKey] = w;
       }
-    } catch (_) { /* ignore */ }
+    } catch (err) { console.warn('[Weather] Forecast error:', err); }
   }
 
   if (!w) {
-    bar.innerHTML = _buildWeatherHTML(_getSimulatedWeather(day), false);
+    bar.innerHTML = cityRow + _buildNoWeatherHTML();
     return;
   }
-  bar.innerHTML = _buildWeatherHTML(w, true);
+  bar.innerHTML = cityRow + _buildWeatherHTML(w, true);
 }
 
 function renderWeather(day) {
   const bar = document.getElementById('weather-bar');
   if (!bar) return;
   if (!day) { bar.innerHTML = ''; return; }
-  bar.innerHTML = _buildWeatherHTML(_getSimulatedWeather(day), false);
+
+  const cityRow = appState.editMode ? _buildWeatherCityInputHTML(day.weather_city || '') : '';
+
+  if (!day.weather_city) {
+    bar.innerHTML = cityRow + _buildNoWeatherHTML();
+    return;
+  }
+
+  bar.innerHTML = cityRow + `<div class="weather-loading">⏳ 取得天氣中...</div>`;
   const trip = DataManager.getTrip(appState.currentTrip);
-  if (trip && day.date) _fetchWeatherForTrip(trip, day);
+  if (trip && day.date) _fetchWeatherForTrip(day);
 }
 
 function renderDriveWarning(events) {
@@ -1374,29 +1405,33 @@ function renderHotelBar(day) {
 
   if (appState.editMode) {
     el.innerHTML = `
-      <div class="hotel-bar-header">
-        <span style="font-size:18px">🏠</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:14px">${encodeHTML(hotel.name)}</div>
-          <div style="font-size:12px;color:var(--muted)">今晚住宿</div>
-        </div>
-        <div class="edit-actions">
-          <button class="edit-icon-btn" onclick="openEditHotelModal()" title="編輯">✏️</button>
-          <button class="edit-icon-btn del" onclick="deleteHotelData()" title="移除住宿">🗑</button>
+      <div class="hotel-bar-card">
+        <div class="hotel-bar-header" style="cursor:default">
+          <span style="font-size:18px">🏠</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:14px">${encodeHTML(hotel.name)}</div>
+            <div style="font-size:12px;color:var(--muted)">今晚住宿</div>
+          </div>
+          <div class="edit-actions">
+            <button class="edit-icon-btn" onclick="openEditHotelModal()" title="編輯">✏️</button>
+            <button class="edit-icon-btn del" onclick="deleteHotelData()" title="移除住宿">🗑</button>
+          </div>
         </div>
       </div>`;
   } else {
     el.innerHTML = `
-      <div class="hotel-bar-header" id="hotel-bar-header" onclick="toggleHotelBar()">
-        <span style="font-size:18px">🏠</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:14px">${encodeHTML(hotel.name)}</div>
-          <div style="font-size:12px;color:var(--muted)">今晚住宿</div>
+      <div class="hotel-bar-card" id="hotel-bar-card">
+        <div class="hotel-bar-header" onclick="toggleHotelBar()">
+          <span style="font-size:18px">🏠</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:14px">${encodeHTML(hotel.name)}</div>
+            <div style="font-size:12px;color:var(--muted)">今晚住宿</div>
+          </div>
+          <span class="hotel-arrow">▾</span>
         </div>
-        <span class="hotel-arrow" id="hotel-arrow">▾</span>
-      </div>
-      <div class="hotel-bar-body" id="hotel-bar-body">
-        <div class="hotel-bar-body-inner">${bodyContent}</div>
+        <div class="hotel-bar-body">
+          <div class="hotel-bar-body-inner">${bodyContent}</div>
+        </div>
       </div>`;
   }
   renderDeleteDayBar();
@@ -1523,22 +1558,18 @@ function deleteHotelData() {
 }
 
 function toggleHotelBar() {
-  const header = document.getElementById('hotel-bar-header');
-  const body   = document.getElementById('hotel-bar-body');
-  if (!header || !body) return;
-  if (header.classList.contains('open')) {
-    body.style.maxHeight = body.scrollHeight + 'px';
-    header.classList.remove('open');
+  const card = document.getElementById('hotel-bar-card');
+  const body = card?.querySelector('.hotel-bar-body');
+  if (!card || !body) return;
+  if (card.classList.contains('expanded')) {
+    body.style.maxHeight = `${body.scrollHeight}px`;
+    card.classList.remove('expanded');
     requestAnimationFrame(() => { body.style.maxHeight = '0'; });
-    body.addEventListener('transitionend', () => {
-      body.classList.remove('open');
-    }, { once: true });
   } else {
-    header.classList.add('open');
-    body.classList.add('open');
-    body.style.maxHeight = body.scrollHeight + 'px';
+    card.classList.add('expanded');
+    body.style.maxHeight = `${body.scrollHeight}px`;
     body.addEventListener('transitionend', () => {
-      if (header.classList.contains('open')) body.style.maxHeight = 'none';
+      if (card.classList.contains('expanded')) body.style.maxHeight = 'none';
     }, { once: true });
   }
 }
@@ -2071,6 +2102,10 @@ function openAddFlightModal() {
   setTimeout(() => document.getElementById('f-dep-city')?.focus(), 100);
 }
 
+function _flightSortKey(f) {
+  return (f.dep_date || '9999-99-99') + 'T' + (f.dep_time || '99:99');
+}
+
 function saveFlightItem() {
   const depCity = document.getElementById('f-dep-city').value.trim();
   const arrCity = document.getElementById('f-arr-city').value.trim();
@@ -2094,6 +2129,7 @@ function saveFlightItem() {
     note:         document.getElementById('f-flight-note').value.trim(),
     status:       'pending',
   });
+  trip.flights.sort((a, b) => _flightSortKey(a).localeCompare(_flightSortKey(b)));
   DataManager.updateTrip(trip.id, trip);
   closeModal();
   showToast('✅ 已新增機票');
@@ -2172,6 +2208,7 @@ function saveEditFlightItem(idx) {
   f.seat         = document.getElementById('f-seat').value.trim();
   f.baggage      = document.getElementById('f-baggage').value.trim();
   f.note         = document.getElementById('f-flight-note').value.trim();
+  trip.flights.sort((a, b) => _flightSortKey(a).localeCompare(_flightSortKey(b)));
   DataManager.updateTrip(trip.id, trip);
   closeModal();
   showToast('✅ 已儲存機票');
